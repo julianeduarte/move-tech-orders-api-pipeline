@@ -38,13 +38,13 @@ jobs:
 
       - name: Deploy no Kubernetes
         run: |
-          # 1. Aplica a estrutura base caso o deployment ainda não exista
-          kubectl apply -f k8s/app.yaml --validate=false
-          
-          # 2. Define a variável com o caminho completo e a tag exata do commit atual
+          # 1. Atualiza a imagem diretamente no cluster sem precisar recriar o arquivo YAML estático
           export IMAGE="${{ secrets.MGC_REGISTRY_NAME }}/orders-api:${{ github.sha }}"
           
-          # 3. Força a atualização do deployment com a nova imagem e aguarda o rollout
+          # 2. Verifica se o deployment já existe, se não existir, aplica o manifesto base
+          kubectl get deployment orders-api || kubectl apply -f k8s/app.yaml --validate=false
+          
+          # 3. Força a atualização da imagem e aguarda o rollout estabilizar
           kubectl set image deployment/orders-api orders-api=$IMAGE
           kubectl rollout restart deployment/orders-api
           kubectl rollout status deployment/orders-api --timeout=180s
