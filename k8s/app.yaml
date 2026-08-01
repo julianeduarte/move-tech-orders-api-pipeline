@@ -16,20 +16,21 @@ spec:
         - name: regcred
       containers:
       - name: orders-api
-        image: container-registry.br-se1.magalu.cloud/lab-registry/orders-api
+        image: $IMAGE
+        imagePullPolicy: Always
         ports:
         - containerPort: 8000
         livenessProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 10
+          initialDelaySeconds: 15
           periodSeconds: 15
         readinessProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 5
+          initialDelaySeconds: 10
           periodSeconds: 10
 ---
 apiVersion: v1
