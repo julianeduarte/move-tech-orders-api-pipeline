@@ -38,13 +38,14 @@ jobs:
 
       - name: Deploy no Kubernetes
         run: |
+          set -euo pipefail
           export IMAGE="${{ secrets.MGC_REGISTRY_NAME }}/orders-api:${{ github.sha }}"
           
-          # 1. Substitui a variável $IMAGE no manifesto e aplica no cluster
+          echo "Removendo deployment antigo para limpar o cache..."
+          kubectl delete deployment orders-api --ignore-not-found=true
+          
+          echo "Aplicando o novo manifesto com a imagem correta..."
           envsubst < k8s/app.yaml | kubectl apply -f -
           
-          # 2. Força o rollout para garantir que o K3s baixe a nova imagem do commit atual
-          kubectl rollout restart deployment/orders-api
-          
-          # 3. Aguarda o status estabilizar
+          echo "Aguardando o rollout da nova versão..."
           kubectl rollout status deployment/orders-api --timeout=180s
