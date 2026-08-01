@@ -1,8 +1,6 @@
 name: Deploy
-
 on:
   workflow_dispatch:
-
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -13,7 +11,6 @@ jobs:
           python-version: '3.11'
       - run: pip install fastapi "scalar-fastapi>=1.8.2" uvicorn pytest httpx
       - run: pytest
-
   build-and-deploy:
     needs: test
     runs-on: ubuntu-latest
@@ -36,16 +33,36 @@ jobs:
           mkdir -p ~/.kube
           echo "${{ secrets.MGC_KUBECONFIG }}" > ~/.kube/config
 
+      - name: Atualizar secret do registry (regcred)
+        run: |
+          REGISTRY_HOST=$(echo "${{ secrets.MGC_REGISTRY_NAME }}" | cut -d'/' -f1)
+          kubectl create secret docker-registry regcred \
+            --docker-server="$REGISTRY_HOST" \
+            --docker-username="${{ secrets.MGC_REGISTRY_USER }}" \
+            --docker-password="${{ secrets.MGC_REGISTRY_PASSWORD }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy no Kubernetes
         run: |
           set -euo pipefail
           export IMAGE="${{ secrets.MGC_REGISTRY_NAME }}/orders-api:${{ github.sha }}"
-          
-          echo "Removendo deployment antigo para limpar o cache..."
-          kubectl delete deployment orders-api --ignore-not-found=true
-          
-          echo "Aplicando o novo manifesto com a imagem correta..."
+
+          echo "Aplicando manifesto..."
           envsubst < k8s/app.yaml | kubectl apply -f -
-          
-          echo "Aguardando o rollout da nova versão..."
+
+          echo "Forçando rollout para garantir pull da nova imagem..."
+          kubectl rollout restart deployment/orders-api
+
+          echo "Aguardando o rollout estabilizar..."
           kubectl rollout status deployment/orders-api --timeout=180s
+
+      - name: Debug em caso de falha
+        if: failure()
+        run: |
+          kubectl get pods -l app=orders-api -o wide
+          echo "---- describe deployment ----"
+          kubectl describe deployment orders-api
+          echo "---- describe pods ----"
+          kubectl describe pods -l app=orders-api
+          echo "---- logs ----"
+          kubectl logs -l app=orders-api --tail=100 --all-containers || true
