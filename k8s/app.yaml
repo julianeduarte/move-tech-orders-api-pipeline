@@ -16,7 +16,7 @@ spec:
         - name: regcred
       containers:
       - name: orders-api
-        image: $IMAGE
+        image: container-registry.br-se1.magalu.cloud/lab-registry/orders-api
         ports:
         - containerPort: 8000
         livenessProbe:
