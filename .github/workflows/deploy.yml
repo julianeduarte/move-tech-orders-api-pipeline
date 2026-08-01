@@ -38,13 +38,27 @@ jobs:
 
       - name: Deploy no Kubernetes
         run: |
+          set -euo pipefail
           export IMAGE="${{ secrets.MGC_REGISTRY_NAME }}/orders-api:${{ github.sha }}"
           
-          # 1. Atualiza a imagem diretamente no deployment existente via patch JSON, garantindo que o K3s saiba que houve mudança
-          kubectl set image deployment/orders-api orders-api=$IMAGE --record || kubectl apply -f k8s/app.yaml
+          # Aplica o manifesto substituindo a variável de imagem de forma limpa
+          envsubst < k8s/app.yaml | kubectl apply -f -
           
-          # 2. Força o restart do deployment para disparar o rollout imediato com a nova imagem
-          kubectl rollout restart deployment/orders-api
-          
-          # 3. Aguarda o status com timeout seguro
-          kubectl rollout status deployment/orders-api --timeout=180s
+          # Aguarda o rollout com um timeout seguro de 5 minutos
+          if ! kubectl rollout status deployment/orders-api --timeout=5m; then
+            echo "Rollout falhou — coletando diagnósticos do cluster..."
+            echo "=== Deployment describe ==="
+            kubectl describe deployment/orders-api || true
+            echo "=== Pods (detailed) ==="
+            kubectl get pods -l app=orders-api -o wide || true
+            echo "=== Pod describe & logs para os pods ==="
+            for p in $(kubectl get pods -l app=orders-api -o name); do
+              echo "--- $p ---"
+              kubectl describe $p || true
+              kubectl logs $p --all-containers --tail=200 || true
+              kubectl logs $p --all-containers --previous --tail=200 || true
+            done
+            echo "=== Eventos recentes ==="
+            kubectl get events --sort-by=.metadata.creationTimestamp || true
+            exit 1
+          fi
